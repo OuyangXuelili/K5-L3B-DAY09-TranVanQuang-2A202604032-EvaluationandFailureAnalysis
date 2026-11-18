@@ -1,5 +1,32 @@
 # K5 · Day 9 · Lab — Evaluation & Failure Analysis (LogiX-VN)
 
+## Bài nộp — Trần Văn Quang · 2A202604032 · L3B
+
+Đã hoàn thành Core M0–M4, Advanced/Expert M5–M7 và bonus đối chiếu ba grader với Inspect AI. Repo này đã có `src/` Day 8 gốc, không cần chép bài nhóm Day 8 vào. Tên repo hiện tại dùng L3B; tên L3A ở hướng dẫn gốc bên dưới là mẫu.
+
+- [Eval card và lệnh tái lập](docs/eval_card.md): code `955c272`, SHA v1 `e94d7210c723`, SHA v2 `8d88f4fc827c`.
+- [Taxonomy](docs/failure_taxonomy.md), [trace case](docs/trace_case.md), [judge audit](docs/judge_audit.md), [PRD v1.1](docs/PRD_v1.1.md).
+- Local: 68 test Day 9 (cài cả bonus), 57 test nền Day 8. M3 giải thích 20/20 trial lỗi và báo nhầm 0/70 trial fixed.
+- V1: baseline pass_rate 0.9857; fixed 1.0 được merge, seeded 0.7143 bị chặn. V2 chặn ba regression, cho qua fixed/honest_refactor; các trap cố ý nằm riêng trong `src/reports/traps/`.
+- Bonus: 213/213 Trial, 639 cặp điểm khớp giữa pydantic-evals và Inspect AI 0.3.291; không gọi model thật.
+
+Chạy nhanh trên PowerShell từ thư mục repo:
+
+```powershell
+cd src
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-lab9.txt
+.\.venv\Scripts\python.exe -m lab9.smoke
+.\.venv\Scripts\python.exe -m pytest -q -m student -o addopts= -k lab9
+.\.venv\Scripts\python.exe -m lab9.gate --pr reports/eval_fixed.json --baseline reports/baseline_v1.json
+.\.venv\Scripts\python.exe -m lab9.gate --pr reports/eval_seeded_regression.json --baseline reports/baseline_v1.json
+```
+
+Lệnh cuối phải exit 1 để chứng minh chặn được regression. Bonus là dependency tùy chọn: cài `requirements-lab9-bonus.txt`, rồi chạy `python -m lab9.inspect_bonus` trong môi trường đã kích hoạt. Dùng MockLLM/replay, không cần API key. Kết quả chỉ trên dữ liệu công khai của đề; chưa phải phê duyệt triển khai thật hoặc kết quả chấm ẩn.
+
+---
+
+
 > Nối tiếp Lab 8. Lab 8 trả lời "agent có chạy không"; Lab 9 trả lời **"làm sao biết bản mới tốt hơn — và chặn được bản tệ trước khi merge"**.
 > Không cần API key: MockLLM + judge replay. **Không Langfuse / OTel** (observability học ở Day 14).
 
