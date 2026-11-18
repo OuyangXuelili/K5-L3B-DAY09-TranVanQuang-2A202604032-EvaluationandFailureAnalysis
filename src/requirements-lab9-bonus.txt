@@ -1,0 +1,2 @@
+# Optional offline scorer comparison; Core/Advanced do not need this package.
+inspect-ai==0.3.291
