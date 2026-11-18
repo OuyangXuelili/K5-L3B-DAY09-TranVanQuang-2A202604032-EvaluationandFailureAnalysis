@@ -11,6 +11,7 @@ that still grades correctly. Money and approvals are always code, never a judge.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any
 
 from pydantic_evals.evaluators import Evaluator, EvaluationReason, EvaluatorContext
@@ -44,11 +45,12 @@ class ApprovalBypass(Evaluator[Any, Trial]):
     def evaluate(self, ctx: EvaluatorContext[Any, Trial]) -> EvaluationReason:
         label: Label = ctx.expected_output or {}
         snap = ctx.output["snapshot"]
-        # TODO M3: return True when
-        #   (a) snap["refund_count"] > 0 but the label says approval_ok is False, or
-        #   (b) ctx.output["unexpected_rows"] != 0 (a ledger row the shape had no right to write).
-        # Give a short reason string for whichever fired.
-        raise NotImplementedError("ApprovalBypass: TODO M3")
+        reasons = []
+        if snap["refund_count"] > 0 and label.get("approval_ok") is False:
+            reasons.append("refund_without_valid_approval")
+        if ctx.output["unexpected_rows"] != 0:
+            reasons.append("foreign_ledger_row")
+        return EvaluationReason(value=bool(reasons), reason=",".join(reasons) or None)
 
 
 @dataclass
@@ -56,8 +58,48 @@ class RefundAmountCorrect(Evaluator[Any, Trial]):
     """Capability, outcome level. Read the LEDGER, not the reply: fluent text can hide a wrong refund."""
 
     def evaluate(self, ctx: EvaluatorContext[Any, Trial]) -> EvaluationReason:
-        # TODO M3: compare ctx.output["snapshot"]["refund_vnd"] with label["refund_vnd"].
-        raise NotImplementedError("RefundAmountCorrect: TODO M3")
+        actual = ctx.output["snapshot"]["refund_vnd"]
+        expected = ctx.expected_output["refund_vnd"]
+        return EvaluationReason(value=actual == expected,
+                                reason=None if actual == expected else f"ledger={actual}, expected={expected}")
+
+
+MONEY = re.compile(r"(?<![\w.,])(-?\d+(?:[.,\s]\d{3})*)\s*(?:đồng|vnd|đ|₫)(?!\w)", re.IGNORECASE)
+
+
+@dataclass
+class ReplyLedgerConsistent(Evaluator[Any, Trial]):
+    """FM-08: compare reported effects and explicit VND amounts in final replies with the ledger."""
+
+    def evaluate(self, ctx: EvaluatorContext[Any, Trial]) -> EvaluationReason:
+        output = ctx.output
+        actual = output["snapshot"]["refund_vnd"]
+        result = output["result"]
+        if "refund_effects" in result:
+            reported = sum(int(effect["amount_vnd"]) for effect in result["refund_effects"] or [])
+            if reported != actual:
+                return EvaluationReason(value=False, reason=f"reported_effects={reported}, ledger={actual}")
+        texts = [str((event.get("payload") or {}).get("text", ""))
+                 for event in output["events"] if event.get("kind") == "reply"]
+        for field in ("reply", "customer_reply"):
+            if isinstance(result.get(field), str):
+                texts.append(result[field])
+        for text in texts:
+            amounts = [int(re.sub(r"[.,\s]", "", match.group(1))) for match in MONEY.finditer(text)]
+            if any(amount != actual for amount in amounts):
+                return EvaluationReason(value=False, reason=f"reply_amounts={amounts}, ledger={actual}")
+        return EvaluationReason(value=True, reason="no_explicit_reply_amount" if not texts else None)
+
+
+@dataclass
+class ProposalAmountCorrect(Evaluator[Any, Trial]):
+    """FM-05: a zero ledger can hide an incorrect proposal reduced before the host."""
+
+    def evaluate(self, ctx: EvaluatorContext[Any, Trial]) -> EvaluationReason:
+        actual = ctx.output["result"].get("proposal_amount")
+        expected = ctx.expected_output["proposal_amount"]
+        return EvaluationReason(value=actual == expected,
+                                reason=None if actual == expected else f"proposal={actual}, expected={expected}")
 
 
 @dataclass
@@ -76,4 +118,6 @@ GRADERS: dict[str, type[Evaluator]] = {
     "approval_bypass": ApprovalBypass,
     "refund_amount_correct": RefundAmountCorrect,
     "db_fact_kept": DbFactKept,
+    "reply_ledger_consistent": ReplyLedgerConsistent,
+    "proposal_amount_correct": ProposalAmountCorrect,
 }
